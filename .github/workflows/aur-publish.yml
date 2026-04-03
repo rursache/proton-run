@@ -1,0 +1,59 @@
+name: Publish to AUR
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  aur-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute source tarball sha256
+        id: sha
+        run: |
+          sha=$(curl -sL "https://codeload.github.com/${{ github.repository }}/tar.gz/${{ github.ref_name }}" | sha256sum | cut -d' ' -f1)
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Update PKGBUILD and .SRCINFO
+        env:
+          PKG_VERSION: ${{ steps.version.outputs.version }}
+          PKG_SHA256: ${{ steps.sha.outputs.sha256 }}
+        run: |
+          cd packaging/aur
+          sed -i "s/^pkgver=.*/pkgver=${PKG_VERSION}/" PKGBUILD
+          sed -i "s/^sha256sums=.*/sha256sums=('${PKG_SHA256}')/" PKGBUILD
+
+          # Regenerate .SRCINFO (tab-indented, no leading spaces)
+          printf '%s\n' \
+            "pkgbase = proton-run" \
+            "	pkgdesc = Run Windows executables with Steam Proton outside of Steam" \
+            "	pkgver = ${PKG_VERSION}" \
+            "	pkgrel = 1" \
+            "	url = https://github.com/rursache/proton-run" \
+            "	arch = any" \
+            "	license = MIT" \
+            "	depends = bash" \
+            "	depends = steam" \
+            "	depends = yq" \
+            "	source = proton-run-${PKG_VERSION}.tar.gz::https://codeload.github.com/rursache/proton-run/tar.gz/v${PKG_VERSION}" \
+            "	sha256sums = ${PKG_SHA256}" \
+            "" \
+            "pkgname = proton-run" \
+            > .SRCINFO
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: proton-run
+          pkgbuild: packaging/aur/PKGBUILD
+          assets: packaging/aur/.SRCINFO
+          commit_username: Radu Ursache
+          commit_email: radu@ursache.ro
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to v${{ steps.version.outputs.version }}"

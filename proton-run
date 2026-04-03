@@ -1,42 +1,264 @@
 #!/bin/bash
-export STEAM_COMPAT_DATA_PATH="$HOME/.proton_pfx"
-export STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.local/share/Steam"
-mkdir -p "$STEAM_COMPAT_DATA_PATH"
+set -euo pipefail
 
+VERSION="${PROTON_RUN_VERSION:-dev}"
+CONFIG_FILE="$HOME/.config/proton-run.yaml"
+DEFAULT_CONFIG_FILE="/usr/share/proton-run/default-config.yaml"
+
+# --- Helpers ---
+die() {
+    echo "error: $1" >&2
+    exit 1
+}
+
+info() {
+    echo ":: $1"
+}
+
+expand_tilde() {
+    echo "${1/#\~/$HOME}"
+}
+
+# --- Config management ---
+ensure_config() {
+    [[ -f "$DEFAULT_CONFIG_FILE" ]] || die "Default config not found at $DEFAULT_CONFIG_FILE"
+
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        mkdir -p "$(dirname "$CONFIG_FILE")"
+        cp "$DEFAULT_CONFIG_FILE" "$CONFIG_FILE"
+        info "Created default config at $CONFIG_FILE"
+    else
+        migrate_config
+    fi
+}
+
+migrate_config() {
+    local defaults_keys
+    defaults_keys=$(yq 'keys | .[]' "$DEFAULT_CONFIG_FILE" 2>/dev/null) || return 0
+
+    local changed=false
+    for key in $defaults_keys; do
+        if [[ $(yq "has(\"$key\")" "$CONFIG_FILE" 2>/dev/null) == "false" ]]; then
+            local default_value
+            default_value=$(yq ".$key" "$DEFAULT_CONFIG_FILE")
+            yq -i ".$key = $default_value" "$CONFIG_FILE"
+            info "Added missing config key: $key"
+            changed=true
+        fi
+    done
+
+    if [[ "$changed" == "true" ]]; then
+        info "Config updated with new defaults at $CONFIG_FILE"
+    fi
+}
+
+read_config() {
+    local key="$1"
+    local value
+    value=$(yq -r ".$key" "$CONFIG_FILE" 2>/dev/null) || die "Failed to read config key: $key"
+    echo "$value"
+}
+
+read_config_array() {
+    local key="$1"
+    yq -r ".$key[]" "$CONFIG_FILE" 2>/dev/null || die "Failed to read config array: $key"
+}
+
+# --- Proton discovery ---
 find_proton() {
-    local search_dirs=("$HOME/.steam" "$HOME/.local/share/Steam")
-    local preferences=("Proton - Experimental" "Proton Hotfix" "Proton [0-9]")
+    local proton_version
+    proton_version=$(read_config "proton_version")
+
+    # If an explicit path is set, use it directly
+    if [[ "$proton_version" != "auto" ]]; then
+        local expanded
+        expanded=$(expand_tilde "$proton_version")
+        if [[ -x "$expanded" ]]; then
+            echo "$expanded"
+            return
+        fi
+        die "Configured proton_version path not found or not executable: $expanded"
+    fi
+
+    # Auto-detection: search by preference order
+    local -a search_dirs
+    while IFS= read -r dir; do
+        search_dirs+=("$(expand_tilde "$dir")")
+    done < <(read_config_array "proton_search_dirs")
+
+    local -a preferences
+    while IFS= read -r pref; do
+        preferences+=("$pref")
+    done < <(read_config_array "proton_preferences")
 
     for pref in "${preferences[@]}"; do
         for dir in "${search_dirs[@]}"; do
+            [[ -d "$dir" ]] || continue
+            local match
             match=$(find "$dir" -maxdepth 4 -name "proton" -path "*$pref*" 2>/dev/null | head -1)
-            if [ -n "$match" ]; then
+            if [[ -n "$match" ]]; then
                 echo "$match"
                 return
             fi
         done
     done
 
-    # Last resort: any Proton (GE, etc.)
-    for dir in "${search_dirs[@]}"; do
-        match=$(find "$dir" -maxdepth 4 -name "proton" -path "*Proton*" 2>/dev/null | head -1)
-        if [ -n "$match" ]; then
-            echo "$match"
-            return
-        fi
-    done
+    die "No Proton installation found. Check proton_search_dirs and proton_preferences in $CONFIG_FILE"
 }
 
-PROTON=$(find_proton)
-if [ -z "$PROTON" ]; then
-    echo "No Proton installation found"
-    exit 1
-fi
+# --- Steam ID detection ---
+detect_steam_id() {
+    local exe_dir="$1"
 
-WINEDLLOVERRIDES="steam_api64=n,b;Custom=n,b;winmm=n,b;OnlineFix64=n,b;SteamOverlay64=n,b;GameAssembly=n,b"
+    # Check steam_appid.txt in exe dir and subdirs
+    local appid_file
+    appid_file=$(find "$exe_dir" -maxdepth 3 -name "steam_appid.txt" 2>/dev/null | head -1)
+    if [[ -n "$appid_file" ]]; then
+        local id
+        id=$(tr -dc '0-9' < "$appid_file")
+        if [[ -n "$id" ]]; then
+            echo "$id"
+            return
+        fi
+    fi
 
-export WINEDLLOVERRIDES
+    # Check OnlineFix.ini for RealAppId
+    local ini_file
+    ini_file=$(find "$exe_dir" -maxdepth 3 -name "OnlineFix.ini" 2>/dev/null | head -1)
+    if [[ -n "$ini_file" ]]; then
+        local id
+        id=$(grep -oP 'RealAppId=\K[0-9]+' "$ini_file" 2>/dev/null | head -1)
+        if [[ -n "$id" ]]; then
+            echo "$id"
+            return
+        fi
+    fi
+}
 
-echo "Using: $PROTON and $WINEDLLOVERRIDES"
+build_dll_overrides() {
+    local result=""
+    while IFS= read -r dll; do
+        [[ -z "$dll" ]] && continue
+        [[ -n "$result" ]] && result+=";"
+        result+="${dll}=n,b"
+    done < <(read_config_array "dll_overrides")
+    echo "$result"
+}
 
-"$PROTON" run "$@"
+# --- CLI ---
+show_help() {
+    cat <<EOF
+proton-run $VERSION - Run Windows executables with Steam Proton
+
+Usage: proton-run [options] <executable> [args...]
+
+Options:
+  --help              Show this help message
+  --config            Open the configuration file in your default editor
+  --steam-id <id>     Override or force a Steam App ID for per-game prefix
+
+Configuration: $CONFIG_FILE
+
+Examples:
+  proton-run game.exe
+  proton-run --steam-id 4069520 game.exe
+  proton-run --config
+EOF
+    exit 0
+}
+
+open_config() {
+    ensure_config
+    local editor="${EDITOR:-${VISUAL:-xdg-open}}"
+    info "Opening $CONFIG_FILE with $editor"
+    exec "$editor" "$CONFIG_FILE"
+}
+
+# --- Main ---
+main() {
+    local forced_steam_id=""
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --help|-h)
+                show_help
+                ;;
+            --config)
+                open_config
+                ;;
+            --steam-id)
+                [[ -z "${2:-}" ]] && die "--steam-id requires a value"
+                forced_steam_id="$2"
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    [[ $# -eq 0 ]] && die "No executable specified. Usage: proton-run [options] <executable> [args...]"
+
+    # Check dependencies
+    command -v yq &>/dev/null || die "yq is required but not installed. Install it with: sudo pacman -S yq"
+
+    # Setup config
+    ensure_config
+
+    # Validate input
+    local exe="$1"
+    if [[ ! -f "$exe" ]]; then
+        if [[ ! -f "$(pwd)/$exe" ]]; then
+            die "Executable not found: $exe"
+        fi
+        exe="$(pwd)/$exe"
+    fi
+    local exe_dir
+    exe_dir=$(dirname "$(realpath "$exe")")
+
+    # Read configuration
+    local wine_prefix steam_compat_path dll_overrides
+    wine_prefix=$(expand_tilde "$(read_config "wine_prefix")")
+    steam_compat_path=$(expand_tilde "$(read_config "steam_compat_client_install_path")")
+    dll_overrides=$(build_dll_overrides)
+
+    # Per-game prefix logic
+    local per_game_prefix
+    per_game_prefix=$(read_config "per_game_prefix")
+
+    if [[ -n "$forced_steam_id" ]]; then
+        wine_prefix="$steam_compat_path/steamapps/compatdata/$forced_steam_id"
+        info "Steam ID: $forced_steam_id (forced via --steam-id)"
+    elif [[ "$per_game_prefix" == "true" ]]; then
+        local detected_id
+        detected_id=$(detect_steam_id "$exe_dir")
+        if [[ -n "$detected_id" ]]; then
+            wine_prefix="$steam_compat_path/steamapps/compatdata/$detected_id"
+            info "Steam ID: $detected_id (auto-detected)"
+        else
+            info "No Steam ID found, using default prefix"
+        fi
+    fi
+
+    # Find Proton
+    local proton
+    proton=$(find_proton)
+
+    # Set environment
+    export STEAM_COMPAT_DATA_PATH="$wine_prefix"
+    export STEAM_COMPAT_CLIENT_INSTALL_PATH="$steam_compat_path"
+    export WINEDLLOVERRIDES="$dll_overrides"
+    if [[ "$(read_config "mangohud")" == "true" ]]; then
+        export MANGOHUD=1
+    fi
+    mkdir -p "$wine_prefix"
+
+    info "Proton: $proton"
+    info "Prefix: $wine_prefix"
+    info "Running: $exe"
+
+    "$proton" run "$@"
+}
+
+main "$@"

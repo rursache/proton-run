@@ -2,5 +2,6 @@
 Name=Proton Run
 Exec=/usr/bin/proton-run %f
 Type=Application
+Icon=proton-run
 MimeType=application/x-ms-dos-executable;application/x-msdos-program;
 NoDisplay=true

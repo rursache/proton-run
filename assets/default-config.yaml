@@ -1,0 +1,49 @@
+# proton-run configuration
+# https://github.com/rursache/proton-run
+
+# Proton version preference (first match wins, supports glob patterns)
+# Use "auto" to search in order below, or specify an exact path
+proton_version: "auto"
+
+# Search order when proton_version is "auto" (first match wins)
+proton_preferences:
+  - "Proton - Experimental"
+  - "Proton Hotfix"
+  - "Proton 9*"
+  - "GE-Proton*"
+  - "Proton-GE*"
+  - "Proton-EM*"
+  - "Proton 8*"
+  - "Proton*"
+
+# Directories to search for Proton installations
+proton_search_dirs:
+  - "~/.steam"
+  - "~/.local/share/Steam"
+
+# Enable MangoHud overlay (FPS, CPU/GPU stats, frame timing)
+mangohud: false
+
+# Use per-game prefixes based on Steam App ID (detected from steam_appid.txt or OnlineFix.ini)
+# When true, prefixes are stored in Steam compatdata: ~/.local/share/Steam/steamapps/compatdata/<id>/
+# When false, all games share the single wine_prefix above
+per_game_prefix: false
+
+# Wine prefix path for Proton (used as fallback when per_game_prefix is off or no Steam ID is found)
+wine_prefix: "~/.proton_pfx"
+
+# Steam compatibility client install path
+steam_compat_client_install_path: "~/.local/share/Steam"
+
+# Wine DLL overrides (=n,b is added automatically to each entry)
+dll_overrides:
+  - "steam_api"
+  - "steam_api64"
+  - "OnlineFix"
+  - "OnlineFix64"
+  - "SteamOverlay"
+  - "SteamOverlay64"
+  - "Custom"
+  - "winmm"
+  - "version"
+  - "GameAssembly"
