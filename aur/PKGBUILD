@@ -1,6 +1,6 @@
 # Maintainer: Radu Ursache <radu@ursache.ro>
 pkgname=proton-run
-pkgver=0.1.0
+pkgver=0.0.0
 pkgrel=1
 pkgdesc="Run Windows executables with Steam Proton outside of Steam"
 arch=('any')
