@@ -89,6 +89,7 @@ Edit it directly or use `proton-run --config` to open it in your default editor.
 | `proton_preferences` | *(see below)* | Search order for auto-detection (first match wins) |
 | `proton_search_dirs` | `~/.steam`, `~/.local/share/Steam` | Directories to scan for Proton installations |
 | `mangohud` | `false` | Enable MangoHud overlay (FPS, CPU/GPU stats) |
+| `protonhax` | `false` | Enable protonhax for running additional programs inside the Proton prefix (falls back to classic launch if not installed) |
 | `per_game_prefix` | `false` | Use per-game Wine prefixes based on detected Steam App ID |
 | `wine_prefix` | `~/.proton_pfx` | Shared Wine prefix path (fallback when per-game is off or no ID is found) |
 | `steam_compat_client_install_path` | `~/.local/share/Steam` | Steam install path |

@@ -258,7 +258,17 @@ main() {
     info "Prefix: $wine_prefix"
     info "Running: $exe"
 
-    "$proton" run "$@"
+    if [[ "$(read_config "protonhax")" == "true" ]]; then
+        if command -v protonhax &>/dev/null; then
+            info "Using protonhax"
+            protonhax init "$proton" run "$@"
+        else
+            info "protonhax enabled but not installed, falling back to classic launch"
+            "$proton" run "$@"
+        fi
+    else
+        "$proton" run "$@"
+    fi
 }
 
 main "$@"

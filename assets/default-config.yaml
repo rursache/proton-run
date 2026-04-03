@@ -24,6 +24,10 @@ proton_search_dirs:
 # Enable MangoHud overlay (FPS, CPU/GPU stats, frame timing)
 mangohud: false
 
+# Enable protonhax (allows running additional programs inside the Proton prefix)
+# Falls back to classic launch if protonhax is not installed
+protonhax: false
+
 # Use per-game prefixes based on Steam App ID (detected from steam_appid.txt or OnlineFix.ini)
 # When true, prefixes are stored in Steam compatdata: ~/.local/share/Steam/steamapps/compatdata/<id>/
 # When false, all games share the single wine_prefix above
