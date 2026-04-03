@@ -48,12 +48,28 @@ jobs:
             > .SRCINFO
 
       - name: Publish to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
-        with:
-          pkgname: proton-run
-          pkgbuild: packaging/aur/PKGBUILD
-          assets: packaging/aur/.SRCINFO
-          commit_username: Radu Ursache
-          commit_email: radu@ursache.ro
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "Update to v${{ steps.version.outputs.version }}"
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          PKG_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Setup SSH
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -t rsa,ecdsa,ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          cat >> ~/.ssh/config <<EOF
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur
+            User aur
+          EOF
+
+          # Clone AUR repo, update, and push
+          git clone ssh://aur@aur.archlinux.org/proton-run.git /tmp/aur-proton-run
+          cp packaging/aur/PKGBUILD /tmp/aur-proton-run/PKGBUILD
+          cp packaging/aur/.SRCINFO /tmp/aur-proton-run/.SRCINFO
+          cd /tmp/aur-proton-run
+          git config user.name "Radu Ursache"
+          git config user.email "radu@ursache.ro"
+          git add PKGBUILD .SRCINFO
+          git diff --cached --quiet || git commit -m "Update to v${PKG_VERSION}"
+          git push
