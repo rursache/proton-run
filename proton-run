@@ -1,0 +1,42 @@
+#!/bin/bash
+export STEAM_COMPAT_DATA_PATH="$HOME/.proton_pfx"
+export STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.local/share/Steam"
+mkdir -p "$STEAM_COMPAT_DATA_PATH"
+
+find_proton() {
+    local search_dirs=("$HOME/.steam" "$HOME/.local/share/Steam")
+    local preferences=("Proton - Experimental" "Proton Hotfix" "Proton [0-9]")
+
+    for pref in "${preferences[@]}"; do
+        for dir in "${search_dirs[@]}"; do
+            match=$(find "$dir" -maxdepth 4 -name "proton" -path "*$pref*" 2>/dev/null | head -1)
+            if [ -n "$match" ]; then
+                echo "$match"
+                return
+            fi
+        done
+    done
+
+    # Last resort: any Proton (GE, etc.)
+    for dir in "${search_dirs[@]}"; do
+        match=$(find "$dir" -maxdepth 4 -name "proton" -path "*Proton*" 2>/dev/null | head -1)
+        if [ -n "$match" ]; then
+            echo "$match"
+            return
+        fi
+    done
+}
+
+PROTON=$(find_proton)
+if [ -z "$PROTON" ]; then
+    echo "No Proton installation found"
+    exit 1
+fi
+
+WINEDLLOVERRIDES="steam_api64=n,b;Custom=n,b;winmm=n,b;OnlineFix64=n,b;SteamOverlay64=n,b;GameAssembly=n,b"
+
+export WINEDLLOVERRIDES
+
+echo "Using: $PROTON and $WINEDLLOVERRIDES"
+
+"$PROTON" run "$@"

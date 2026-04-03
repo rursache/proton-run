@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Proton Run
+Exec=/usr/bin/proton-run %f
+Type=Application
+MimeType=application/x-ms-dos-executable;application/x-msdos-program;
+NoDisplay=true
