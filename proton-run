@@ -65,12 +65,33 @@ read_config_array() {
 }
 
 # --- Proton discovery ---
+list_available_protons() {
+    local -a dirs=("$@")
+    local -a found
+    for dir in "${dirs[@]}"; do
+        [[ -d "$dir" ]] || continue
+        while IFS= read -r match; do
+            found+=("$(basename "$(dirname "$match")")")
+        done < <(find "$dir" -maxdepth 4 -name "proton" 2>/dev/null)
+    done
+
+    if [[ ${#found[@]} -gt 0 ]]; then
+        info "Available Proton versions:"
+        for name in "${found[@]}"; do
+            echo "  - $name"
+        done
+    else
+        info "No Proton installations found in search directories"
+    fi
+}
+
 find_proton() {
+    local forced_proton="${1:-}"
     local proton_version
     proton_version=$(read_config "proton_version")
 
-    # If an explicit path is set, use it directly
-    if [[ "$proton_version" != "auto" ]]; then
+    # If an explicit path is set in config, use it directly
+    if [[ -z "$forced_proton" && "$proton_version" != "auto" ]]; then
         local expanded
         expanded=$(expand_tilde "$proton_version")
         if [[ -x "$expanded" ]]; then
@@ -80,12 +101,28 @@ find_proton() {
         die "Configured proton_version path not found or not executable: $expanded"
     fi
 
-    # Auto-detection: search by preference order
+    # Build search dirs
     local -a search_dirs
     while IFS= read -r dir; do
         search_dirs+=("$(expand_tilde "$dir")")
     done < <(read_config_array "proton_search_dirs")
 
+    # If --proton was passed, search only for that name
+    if [[ -n "$forced_proton" ]]; then
+        for dir in "${search_dirs[@]}"; do
+            [[ -d "$dir" ]] || continue
+            local match
+            match=$(find "$dir" -maxdepth 4 -name "proton" -path "*$forced_proton*" 2>/dev/null | head -1)
+            if [[ -n "$match" ]]; then
+                echo "$match"
+                return
+            fi
+        done
+        list_available_protons "${search_dirs[@]}"
+        die "Proton version not found: $forced_proton"
+    fi
+
+    # Auto-detection: search by preference order
     local -a preferences
     while IFS= read -r pref; do
         preferences+=("$pref")
@@ -103,6 +140,7 @@ find_proton() {
         done
     done
 
+    list_available_protons "${search_dirs[@]}"
     die "No Proton installation found. Check proton_search_dirs and proton_preferences in $CONFIG_FILE"
 }
 
@@ -133,6 +171,18 @@ detect_steam_id() {
             return
         fi
     fi
+
+    # Check steamclient64.ini or steamclient.ini for AppId
+    local sc_file
+    sc_file=$(find "$exe_dir" -maxdepth 3 \( -name "steamclient64.ini" -o -name "steamclient.ini" \) 2>/dev/null | head -1)
+    if [[ -n "$sc_file" ]]; then
+        local id
+        id=$(grep -oP 'AppId=\K[0-9]+' "$sc_file" 2>/dev/null | head -1)
+        if [[ -n "$id" ]]; then
+            echo "$id"
+            return
+        fi
+    fi
 }
 
 build_dll_overrides() {
@@ -156,12 +206,15 @@ Options:
   --help              Show this help message
   --config            Open the configuration file in your default editor
   --steam-id <id>     Override or force a Steam App ID for per-game prefix
+  --proton <name>     Override Proton version (e.g. "Proton Hotfix", "GE-Proton*")
+  --per-game-prefix          Enable per-game Wine prefix for this run
 
 Configuration: $CONFIG_FILE
 
 Examples:
   proton-run game.exe
   proton-run --steam-id 4069520 game.exe
+  proton-run --proton "GE-Proton*" game.exe
   proton-run --config
 EOF
     exit 0
@@ -177,6 +230,8 @@ open_config() {
 # --- Main ---
 main() {
     local forced_steam_id=""
+    local forced_proton=""
+    local forced_per_game=false
 
     # Parse flags
     while [[ $# -gt 0 ]]; do
@@ -191,6 +246,15 @@ main() {
                 [[ -z "${2:-}" ]] && die "--steam-id requires a value"
                 forced_steam_id="$2"
                 shift 2
+                ;;
+            --proton)
+                [[ -z "${2:-}" ]] && die "--proton requires a value"
+                forced_proton="$2"
+                shift 2
+                ;;
+            --per-game-prefix)
+                forced_per_game=true
+                shift
                 ;;
             *)
                 break
@@ -230,7 +294,7 @@ main() {
     if [[ -n "$forced_steam_id" ]]; then
         wine_prefix="$steam_compat_path/steamapps/compatdata/$forced_steam_id"
         info "Steam ID: $forced_steam_id (forced via --steam-id)"
-    elif [[ "$per_game_prefix" == "true" ]]; then
+    elif [[ "$per_game_prefix" == "true" || "$forced_per_game" == "true" ]]; then
         local detected_id
         detected_id=$(detect_steam_id "$exe_dir")
         if [[ -n "$detected_id" ]]; then
@@ -243,7 +307,7 @@ main() {
 
     # Find Proton
     local proton
-    proton=$(find_proton)
+    proton=$(find_proton "$forced_proton")
 
     # Set environment
     export STEAM_COMPAT_DATA_PATH="$wine_prefix"

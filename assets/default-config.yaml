@@ -48,6 +48,8 @@ dll_overrides:
   - "SteamOverlay"
   - "SteamOverlay64"
   - "Custom"
+  - "steamclient"
+  - "steamclient64"
   - "winmm"
   - "version"
   - "GameAssembly"
