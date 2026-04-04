@@ -27,9 +27,11 @@
 - **Auto-detects Proton** — finds the best available Proton version from your Steam installation
 - **Desktop integration** — right-click any `.exe` and open it with Proton Run
 - **YAML configuration** — customize Proton version, DLL overrides, prefix paths, and more
-- **Per-game prefixes** — isolate Wine prefixes per game using Steam App ID detection (`steam_appid.txt`, `OnlineFix.ini`)
+- **Per-game prefixes** — isolate Wine prefixes per game using Steam App ID detection (`steam_appid.txt`, `OnlineFix.ini`, `steamclient64.ini`/`steamclient.ini`)
 - **Config migration** — new config options are automatically added on updates without overwriting your changes
 - **MangoHud support** — toggle the FPS/stats overlay from the config
+- **Proton version override** — select a specific Proton version per run via CLI
+- **Available Proton listing** — shows installed Proton versions when a match isn't found
 
 ## Installation
 
@@ -61,6 +63,12 @@ proton-run game.exe
 
 # Force a specific Steam App ID (uses Steam's compatdata prefix)
 proton-run --steam-id 4069520 game.exe
+
+# Override Proton version for this run
+proton-run --proton "GE-Proton*" game.exe
+
+# Enable per-game prefix for this run
+proton-run --per-game-prefix game.exe
 
 # Open the configuration file
 proton-run --config
@@ -120,6 +128,8 @@ dll_overrides:
   - "SteamOverlay"
   - "SteamOverlay64"
   - "Custom"
+  - "steamclient"
+  - "steamclient64"
   - "winmm"
   - "version"
   - "GameAssembly"
@@ -131,6 +141,7 @@ When `per_game_prefix` is enabled, proton-run scans the game's directory for:
 
 1. **`steam_appid.txt`** — a file containing the Steam App ID
 2. **`OnlineFix.ini`** — extracts the ID from `RealAppId=<id>`
+3. **`steamclient64.ini`** / **`steamclient.ini`** — extracts the ID from `AppId=<id>`
 
 The detected ID is used to create an isolated prefix at `~/.local/share/Steam/steamapps/compatdata/<id>/`, matching Steam's own behavior.
 
