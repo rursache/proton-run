@@ -73,6 +73,9 @@ proton-run --per-game-prefix game.exe
 # Open the configuration file
 proton-run --config
 
+# Open the default Wine prefix's C: drive in your file manager
+proton-run --open-prefix
+
 # Show help
 proton-run --help
 ```
@@ -146,6 +149,16 @@ When `per_game_prefix` is enabled, proton-run scans the game's directory for:
 The detected ID is used to create an isolated prefix at `~/.local/share/Steam/steamapps/compatdata/<id>/`, matching Steam's own behavior.
 
 You can also force an ID with `--steam-id <id>` regardless of the config setting.
+
+## Browsing the Wine prefix
+
+Files installed inside the Wine prefix live under `<wine_prefix>/pfx/drive_c/` on the host filesystem (e.g. `~/.proton_pfx/pfx/drive_c/Program Files/`). Use:
+
+```bash
+proton-run --open-prefix
+```
+
+to open the default prefix's C: drive in your file manager. For per-game prefixes, the path is `~/.local/share/Steam/steamapps/compatdata/<id>/pfx/drive_c/`.
 
 ## License
 

@@ -205,6 +205,7 @@ Usage: proton-run [options] <executable> [args...]
 Options:
   --help              Show this help message
   --config            Open the configuration file in your default editor
+  --open-prefix       Open the default Wine prefix's C: drive in your file manager
   --steam-id <id>     Override or force a Steam App ID for per-game prefix
   --proton <name>     Override Proton version (e.g. "Proton Hotfix", "GE-Proton*")
   --per-game-prefix          Enable per-game Wine prefix for this run
@@ -216,6 +217,7 @@ Examples:
   proton-run --steam-id 4069520 game.exe
   proton-run --proton "GE-Proton*" game.exe
   proton-run --config
+  proton-run --open-prefix
 EOF
     exit 0
 }
@@ -225,6 +227,17 @@ open_config() {
     local editor="${EDITOR:-${VISUAL:-xdg-open}}"
     info "Opening $CONFIG_FILE with $editor"
     exec "$editor" "$CONFIG_FILE"
+}
+
+open_prefix() {
+    ensure_config
+    local wine_prefix drive_c
+    wine_prefix=$(expand_tilde "$(read_config "wine_prefix")")
+    drive_c="$wine_prefix/pfx/drive_c"
+    [[ -d "$drive_c" ]] || die "Prefix C: drive not found at $drive_c (run a Windows executable first to initialize it)"
+    command -v xdg-open &>/dev/null || die "xdg-open is required but not installed"
+    info "Opening $drive_c"
+    exec xdg-open "$drive_c"
 }
 
 # --- Main ---
@@ -241,6 +254,9 @@ main() {
                 ;;
             --config)
                 open_config
+                ;;
+            --open-prefix)
+                open_prefix
                 ;;
             --steam-id)
                 [[ -z "${2:-}" ]] && die "--steam-id requires a value"
